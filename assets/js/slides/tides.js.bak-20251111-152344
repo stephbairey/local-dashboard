@@ -1,0 +1,117 @@
+﻿/* tides.js — Moon + Tides slide */
+(function(){
+  const R = (window.DASH && window.DASH.register) || function(){};
+  const U = (window.DASH && window.DASH.util) || {};
+  const EH = U.escapeHtml || (s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+
+  function fetchJSON(url){
+    const b = url.includes("?") ? "&" : "?";
+    return fetch(url + b + "t=" + Date.now(), { cache: "no-store" }).then(r => r.ok ? r.json() : Promise.reject(r.status));
+  }
+  function fmtTime(dt){
+    return new Date(dt).toLocaleTimeString([], { hour:"numeric", minute:"2-digit" });
+  }
+  function moonEmoji(phase){
+    const p = String(phase||"").toLowerCase();
+    if (p.includes("new")) return "🌑";
+    if (p.includes("waxing crescent")) return "🌒";
+    if (p.includes("first quarter")) return "🌓";
+    if (p.includes("waxing gibbous")) return "🌔";
+    if (p.includes("full")) return "🌕";
+    if (p.includes("waning gibbous")) return "🌖";
+    if (p.includes("last quarter") || p.includes("third quarter")) return "🌗";
+    if (p.includes("waning crescent")) return "🌘";
+    return "🌕";
+  }
+
+  function nextEvent(preds, type){
+    const now = Date.now();
+    return preds
+      .filter(p => p && p.type === type && new Date(p.t).getTime() >= now)
+      .sort((a,b)=> new Date(a.t)-new Date(b.t))[0] || null;
+  }
+
+  function direction(preds){
+    const now = Date.now();
+    const upcoming = preds
+      .filter(p => new Date(p.t).getTime() >= now)
+      .sort((a,b)=> new Date(a.t)-new Date(b.t));
+    if (!upcoming.length) return { word:"Steady", arrow:"→", cls:"tide-steady" };
+    const next = upcoming[0];
+    if (next.type === "H") return { word:"Coming in",  arrow:"↑", cls:"tide-up" };
+    if (next.type === "L") return { word:"Going out", arrow:"↓", cls:"tide-down" };
+    return { word:"Steady", arrow:"→", cls:"tide-steady" };
+  }
+
+  R("slide-tides", function renderTides(tideDataFromApp){
+    const el = document.getElementById("tides-content");
+    if (!el) return;
+
+    // We already got tides.json via app; still fetch moon.json here.
+    Promise.allSettled([
+      Promise.resolve(tideDataFromApp),
+      fetchJSON("/dashboard/api/read.php?file=moon.json")
+    ]).then(results => {
+      const tides = results[0].status === "fulfilled" ? (results[0].value || {}) : {};
+      const moon  = results[1].status === "fulfilled" ? (results[1].value || {}) : {};
+
+      try {
+        const preds = Array.isArray(tides.predictions) ? tides.predictions : [];
+        const wl    = tides.water_level;
+        const dir   = direction(preds);
+        const nextH = nextEvent(preds, "H");
+        const nextL = nextEvent(preds, "L");
+
+        const moonPhase = moon?.current?.phase_name || "Moon";
+        const moonPct   = moon?.current?.illumination_pct;
+        const moonIcon  = moonEmoji(moonPhase);
+        const nextFull  = moon?.next?.full_moon ? new Date(moon.next.full_moon).toLocaleDateString([], { month:"short", day:"numeric" }) : "";
+
+        const wlNum = (wl && wl.v != null) ? Number(wl.v) : null;
+        const wlTxt = (wlNum != null && Number.isFinite(wlNum)) ? wlNum.toFixed(2) + " ft" : "—";
+
+        const list = preds.slice(0,8).map(p => {
+          const when = fmtTime(p.t);
+          const val  = Number(p.v);
+          const tag  = p.type === "H" ? "High" : (p.type === "L" ? "Low" : "");
+          return `<div class="card tide-mini"><div><strong>${EH(when)}</strong> ${tag?`<span class="tag ${p.type==='H'?'tag-high':'tag-low'}">${tag}</span>`:""}</div><div class="small">${isFinite(val)?val.toFixed(2):EH(String(p.v))} ft</div></div>`;
+        }).join("");
+
+        el.innerHTML = `
+          <div class="moon-hero card">
+            <div class="moon-icon" aria-label="${EH(moonPhase)}">${moonIcon}</div>
+            <div class="moon-text">
+              <div class="moon-phase">${EH(moonPhase)}${moonPct!=null?` · ${Math.round(moonPct)}%`:''}</div>
+              ${nextFull ? `<div class="moon-next">Next full: ${EH(nextFull)}</div>` : ""}
+            </div>
+          </div>
+
+          <div class="tide-hero card">
+            <div class="tide-level">${EH(wlTxt)}</div>
+            <div class="tide-dir ${EH(dir.cls)}"><span class="arrow">${dir.arrow}</span> ${EH(dir.word)}</div>
+          </div>
+
+          <div class="tide-grid">
+            <div class="card tide-next">
+              <div class="tide-next-title">Next High</div>
+              <div class="tide-next-val">${nextH ? `${EH(fmtTime(nextH.t))}` : "—"}</div>
+              <div class="tide-next-ft">${nextH && nextH.v!=null ? `${Number(nextH.v).toFixed(2)} ft` : ""}</div>
+            </div>
+            <div class="card tide-next">
+              <div class="tide-next-title">Next Low</div>
+              <div class="tide-next-val">${nextL ? `${EH(fmtTime(nextL.t))}` : "—"}</div>
+              <div class="tide-next-ft">${nextL && nextL.v!=null ? `${Number(nextL.v).toFixed(2)} ft` : ""}</div>
+            </div>
+          </div>
+
+          <div class="tide-list grid">
+            ${list}
+          </div>
+        `;
+      } catch(e){
+        el.innerHTML = `<p class="small mono">${EH(e.message || String(e))}</p>`;
+        console.error("[tides]", e);
+      }
+    });
+  });
+})();

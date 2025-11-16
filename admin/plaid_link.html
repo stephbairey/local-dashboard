@@ -1,0 +1,35 @@
+﻿<!doctype html><meta charset="utf-8">
+<title>Connect your bank</title>
+<script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+<body style="font:16px system-ui;background:#111;color:#eee;padding:2rem">
+<h1>Connect your bank</h1>
+<p>This stores only an access token in <code>python/config.ini</code>.</p>
+<button id="start">Start</button>
+<pre id="log" style="white-space:pre-wrap"></pre>
+<script>
+const log = m => document.getElementById('log').textContent += m + "\\n";
+async function createLinkToken(){
+  const r = await fetch("/dashboard/api/plaid.php", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"create_link_token"})});
+  const j = await r.json();
+  if(!r.ok || !j.link_token){ throw new Error("create_link_token failed: " + (j.error || r.status)); }
+  return j.link_token;
+}
+async function exchange(public_token){
+  const r = await fetch("/dashboard/api/plaid.php", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({action:"exchange_public_token", public_token})});
+  const j = await r.json();
+  if(!r.ok || !j.ok){ throw new Error("exchange failed: " + (j.error || r.status)); }
+  log("Access token saved. You can close this tab.");
+}
+document.getElementById('start').onclick = async () => {
+  try{
+    const token = await createLinkToken();
+    const handler = Plaid.create({
+      token,
+      onSuccess: async (public_token, metadata) => { log("Link success. Exchanging..."); await exchange(public_token); },
+      onExit: (err, meta) => { if(err) log("Exit: "+err.error_code+" "+err.error_message); }
+    });
+    handler.open();
+  }catch(e){ log(String(e)); }
+};
+</script>
+</body>

@@ -1,0 +1,141 @@
+﻿# Dashboard Handoff Note
+
+## What this is
+A local, offline-friendly home dashboard that runs on WAMP with a PHP frontend and small Python fetchers that write JSON. It is designed to sit on a high shelf and be readable at a glance.
+
+## Stack and paths
+Root: C:\wamp64\www\dashboard
+Frontend: PHP + vanilla JS
+Backend data: JSON files in data\ written by Python 3.12 fetchers in python\
+Virtual env: C:\wamp64\www\dashboard\.venv
+
+## Data flow
+Python fetchers write these files. The PHP API serves them with no-cache headers. JS slide modules render them.
+
+- data\calendar.json from python\fetch_calendar_ics.py
+  Merges multiple Google Calendar ICS feeds. No OAuth.
+- data\weather.json from python\fetch_weather_nws.py
+  Uses api.weather.gov for KPDX with a custom User-Agent.
+- data\tides.json from python\fetch_tides_noaa.py
+  NOAA station 9440083, predictions and current water level.
+- data\moon.json from python\fetch_moon.py
+  Moon phase, illumination, and upcoming quarter dates.
+
+Config lives in python\config.ini. Keep private ICS URLs in this file only.
+
+## Scheduler
+Silent Windows Task Scheduler jobs call VBScript wrappers that use pythonw.exe.
+
+- “Dashboard Calendar Refresh”
+  Runs every 5 minutes all day.
+  wscript.exe //B //Nologo C:\wamp64\www\dashboard\scripts\run_calendar_hidden.vbs
+
+- “Dashboard Full Refresh”
+  Runs every 2 hours.
+  wscript.exe //B //Nologo C:\wamp64\www\dashboard\scripts\run_full_refresh_hidden.vbs
+
+Both wrappers call python\run_fetch.py which orchestrates one or more fetchers. Each fetcher may append a tiny line to data\dashboard.log via python\util\simplelog.py.
+
+Quick manual checks from the project root:
+.\.venv\Scripts\python.exe .\python\fetch_calendar_ics.py
+.\.venv\Scripts\python.exe .\python\fetch_weather_nws.py
+.\.venv\Scripts\python.exe .\python\fetch_tides_noaa.py
+.\.venv\Scripts\python.exe .\python\fetch_moon.py
+Get-Item .\data\calendar.json | fl LastWriteTime
+
+Log is at http://localhost/dashboard/data/dashboard.log.
+
+## API
+Simple PHP passthrough with cache busting:
+- api\read.php?file=calendar.json
+- api\read.php?file=weather.json
+- api\read.php?file=tides.json
+- api\read.php?file=moon.json
+
+## Frontend layout
+- index.php
+  Left panel is the large three-line clock. Right panel is a “slides” container. Each slide is a <section> with a unique id and a data-endpoint attribute pointing to the API URL.
+- assets\css\styles.css
+  All styles live here. 95% viewport frame, dark translucent panels, large type.
+- assets\js\app.js
+  Core orchestrator. Rotates slides, fetches each slide’s endpoint with a cache-buster, and dispatches to the right slide module.
+- assets\js\slides\
+  Modular slide renderers:
+  - calendar.js shows non-bill events
+  - bills.js shows only bill-like events
+    Bills are detected with the title regex \(\$\d[\d,]*(?:\.\d{2})?\).
+    Locations that are URLs render as domain only. Any zoom.* host displays as zoom.us or zoom.com.
+  - tides.js shows moon and tides
+    Top card shows moon icon and phase with percent, plus next full-moon date. Tide hero shows current water level and direction word with arrow. Next High and Next Low are highlighted. A compact list shows the next several predicted points.
+
+index.php includes assets\js\app.js then includes slide scripts. Each script tag uses ?v=<?php echo filemtime(...) ?> for cache busting.
+
+## Slide module contract
+Modules register a renderer by slide id. The app passes that slide’s JSON payload to the renderer.
+
+- Global namespace:
+  - window.DASH.register(slideId, renderFn)
+  - window.DASH.util.escapeHtml, extractDomain, linkifyLocation
+- Each slide section must have:
+  - id="slide-xyz"
+  - data-endpoint="/dashboard/api/read.php?file=xyz.json"
+  - A .content container inside for the module to fill
+
+## Adding a new slide
+1) Create the slide HTML block in index.php with a unique id and data-endpoint.
+2) Create assets\js\slides\yourSlide.js. Call DASH.register("slide-yourSlide", fn). Fetch extra sources inside the module only if needed.
+3) Include your script in index.php after app.js using the same filemtime cache-buster.
+4) Put all styling in assets\css\styles.css. No inline styles in JS.
+5) Hard refresh to test. If a slide is blank, open DevTools Console and read the specific error.
+
+## Known decisions and heuristics
+- ICS over OAuth to avoid token expiry.
+- All-day events are detected with a midnight heuristic without explicit timezone.
+- Bill detection is title-based.
+- Location link shows only the domain. Zoom hosts are normalized.
+- All fetches add t=Date.now() to defeat caching.
+
+## Where to pick up
+Weather slide has a large icon and temperature at the top and a trend section. Tides slide shows moon, current level and direction, next high and low, and a short list. Calendar and Bills are modular and stable. Next features can follow the same slide pattern.
+
+## Our five checks and our method
+1) Is this step necessary
+2) Is it supported by facts and the current state
+3) Are we considering edge cases, not just the last thing discussed
+4) Does it make Maya’s life easier
+5) Will it solve the issue rather than just investigate it
+
+Method: we vibe-code one step at a time. I give a single copy paste block for PowerShell or a file, you run it and tell me what you see, and only then we move on. If anything fails, we stop, read the message, fix it, and retry before doing anything else. Secrets stay in config.ini. Prefer silent automation, cache busting for freshness, and tiny logs for visibility.
+## 2025-11-11 15:43 — Tides & Moon slide v1.1
+
+Tide trend line is now concise: "▲ Coming in until 5:08 PM" or "▼ Going out until 5:08 PM". Removed (H)/(L) and parentheses. Moon block still shows phase and next full moon. CSS remains in assets/css/styles.css; logic in assets/js/slides/tides.js. Data from data/tides.json and data/moon.json via api/read.php. For debugging, you can temporarily set ROTATE_MS in app.js to 30000.
+
+Process reminder: define scope, design the UI, wire data, validate with logs, then document here.
+## 2025-11-11 17:03 — Calendar refresh and Bills fix
+
+Architecture
+The dashboard is modular. app.js handles rotation and delegates each slide to its own module in /assets/js/slides: weather.js, calendar.js, bills.js, tides.js. index.php includes these with filemtime cache-busting. CSS lives only in /assets/css/styles.css.
+
+Logging and tasks
+Python logging goes to /data/dashboard.log. A Windows Scheduled Task named “Dashboard Calendar Refresh” runs every 5 minutes and launches scripts\run_calendar_hidden.vbs which calls python\run_fetch.py with the target script path.
+
+Calendar data source
+We now fetch from multiple Google ICS feeds via python\fetch_calendar_ics.py and write to /data/calendar.json. The parser uses icalendar + recurring-ical-events to expand RRULE series and has ConfigParser interpolation disabled so %40 etc are not mangled. Config lives in python\config.ini under [calendars_ics]. Example:
+  stephbairey@gmail.com = https://calendar.google.com/calendar/ical/…/basic.ics
+Success check on 2025-11-11: stephbairey@gmail.com parsed 471 instances; /data/calendar.json updated and Bills returned.
+
+Bills logic
+Bills slide filters titles that contain a dollar amount in parentheses, e.g. “Boat Insurance ()”. This is working again after the ICS parser update.
+
+Tides & Moon
+tides.js is modular. Tide status shows “▲ Coming in until HH:MM” or “▼ Going out until HH:MM” with no parentheses or H/L tags. Moon block shows current phase and next full moon date.
+
+Known follow-ups
+dashboard.log sometimes shows NULs when viewed in some editors; we’ll switch the logger to a Windows-friendly text writer later.
+
+Our five planning questions
+1) What is the smallest safe step? 2) What is the single source of truth? 3) How will we observe it? 4) How do we roll back? 5) Are concerns separated?
+
+How we change code
+One step at a time. You run a single command or paste full code. We verify on screen and in the log, then move to the next step.
+

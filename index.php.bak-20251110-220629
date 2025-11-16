@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Dashboard</title>
+<link rel="stylesheet" href="/dashboard/assets/css/styles.css?v=<?php echo filemtime(__DIR__ . '/assets/css/styles.css'); ?>">
+
+
+</head>
+<body>
+  <div id="app" class="container">
+    <aside class="left">
+		<div class="clock">
+		  <div id="clock-dowline" class="clock-dow">Wednesday afternoon</div>
+		  <div id="clock-time" class="clock-time">1:09 PM</div>
+		  <div id="clock-date" class="clock-date">November 2, 2025</div>
+		</div>
+    </aside>
+
+    <main class="right">
+      <div class="slides">
+        <section class="slide active" id="slide-weather" data-endpoint="/dashboard/api/read.php?file=weather.json">
+          <h2>Weather</h2>
+          <div class="content" id="weather-content">
+            <p>Loading weather…</p>
+          </div>
+        </section>
+
+        <section class="slide" id="slide-calendar" data-endpoint="/dashboard/api/read.php?file=calendar.json">
+          <h2>Calendar</h2>
+          <div class="content" id="calendar-content">
+            <p>Loading calendar…</p>
+          </div>
+        </section>
+		
+		<section class="slide" id="slide-bills" data-endpoint="/dashboard/api/read.php?file=calendar.json">
+		  <h2>Bills</h2>
+		  <div class="content" id="bills-content">
+			<p>Loading bills…</p>
+		  </div>
+		</section>
+
+        <section class="slide" id="slide-tides" data-endpoint="/dashboard/api/read.php?file=tides.json">
+          <h2>Tides</h2>
+          <div class="content" id="tides-content">
+            <p>Loading tides…</p>
+          </div>
+        </section>
+
+        <!--<section class="slide" id="slide-notes" data-static="true">
+          <h2>Notes</h2>
+          <div class="content" id="notes-content">
+            <p>Add your own HTML here at <code>/dashboard/slides/notes.html</code>.</p>
+          </div>
+        </section>-->
+		
+      </div>
+    </main>
+  </div>
+
+  <script src="/dashboard/assets/js/app.js"></script>
+</body>
+</html>

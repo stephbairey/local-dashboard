@@ -1,0 +1,6 @@
+' run_calendar_hidden.vbs ? silent ICS refresh
+Dim oShell, root, pyw
+Set oShell = CreateObject("WScript.Shell")
+root = "C:\wamp64\www\dashboard"
+pyw  = """" & root & "\.venv\Scripts\pythonw.exe" & """"
+oShell.Run pyw & " " & """" & root & "\python\fetch_calendar_ics.py" & """", 0, True

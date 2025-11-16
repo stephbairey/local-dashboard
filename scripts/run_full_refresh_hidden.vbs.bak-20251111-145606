@@ -1,0 +1,9 @@
+' run_full_refresh_hidden.vbs ? silent, no cmd window
+Dim oShell, root, pyw
+Set oShell = CreateObject("WScript.Shell")
+root = "C:\wamp64\www\dashboard"
+pyw  = """" & root & "\.venv\Scripts\pythonw.exe" & """"
+oShell.Run pyw & " " & """" & root & "\python\fetch_weather_nws.py" & """", 0, True
+oShell.Run pyw & " " & """" & root & "\python\fetch_tides_noaa.py"  & """", 0, True
+oShell.Run pyw & " " & """" & root & "\python\fetch_moon.py"        & """", 0, True
+' Done

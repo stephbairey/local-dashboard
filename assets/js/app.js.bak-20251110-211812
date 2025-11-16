@@ -1,0 +1,283 @@
+﻿// Clock and greeting
+// ==== CLOCK (new three-line format) ====
+(() => {
+  const $time   = document.getElementById('clock-time');
+  const $dowln  = document.getElementById('clock-dowline');
+  const $date   = document.getElementById('clock-date');
+
+  function periodOfDay(h) {
+    if (h < 5)  return 'Night';
+    if (h < 12) return 'Morning';
+    if (h < 17) return 'Afternoon';
+    if (h < 21) return 'Evening';
+    return 'Night';
+  }
+
+  function updateClock() {
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const h12 = ((h + 11) % 12) + 1;
+    const ampm = h >= 12 ? 'pm' : 'am';
+
+    const weekday = now.toLocaleDateString(undefined, { weekday: 'long' });
+    const dateStr = now.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+
+    if ($time)  $time.textContent = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+    if ($dowln) $dowln.textContent = `${weekday} ${periodOfDay(h)}`;
+    if ($date)  $date.textContent = dateStr;
+  }
+
+  updateClock();
+  setInterval(updateClock, 1000);
+})();
+
+// Slide rotation
+const ROTATE_MS = 10000;
+const slides = Array.from(document.querySelectorAll('.slide'));
+let currentIndex = 0;
+
+function showSlide(idx) {
+  slides.forEach((s, i) => {
+    s.classList.toggle('active', i === idx);
+  });
+  // Kick off data load for the active slide
+  const active = slides[idx];
+  if (active && !active.dataset.static) {
+    const url = active.dataset.endpoint;
+    if (url) fetchJSON(url).then(data => renderSlide(active.id, data)).catch(() => {});
+  }
+}
+
+function nextSlide() {
+  currentIndex = (currentIndex + 1) % slides.length;
+  showSlide(currentIndex);
+}
+
+setInterval(nextSlide, ROTATE_MS);
+showSlide(currentIndex);
+
+// Data fetch helper with cache busting
+async function fetchJSON(url) {
+  const cacheBust = url.includes('?') ? '&' : '?';
+  const res = await fetch(url + cacheBust + 't=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) throw new Error('Failed to load ' + url);
+  return res.json();
+}
+
+// Renderers
+function renderSlide(id, data) {
+  if (id === 'slide-weather') return renderWeather(data);
+  if (id === 'slide-calendar') return renderCalendar(data);
+  if (id === 'slide-tides') return renderTides(data);
+
+if (id === 'slide-bills') return renderBills(data);
+}
+
+function renderWeather(data) {
+  const el = document.getElementById('weather-content');
+  if (!data || !data.current) {
+    el.innerHTML = '<p class="small">Weather data unavailable.</p>';
+    return;
+  }
+  const curr = data.current;
+  const daily = data.daily ? data.daily.slice(0, 5) : [];
+  const temp = Math.round(curr.temp);
+  const desc = curr.description || (curr.weather && curr.weather[0] && curr.weather[0].description) || 'Weather';
+
+  const top = `<div class="card"><div style="font-size:3.6rem;font-weight:700">${temp}Â°</div><div class="small">${desc}</div></div>`;
+
+  const days = daily.map(d => {
+    const dt = new Date(d.dt * 1000);
+    const name = dt.toLocaleDateString([], { weekday: 'short' });
+    const hi = Math.round(d.temp.max);
+    const lo = Math.round(d.temp.min);
+    return `<div class="card small"><div><strong>${name}</strong></div><div>Hi ${hi}Â°  Lo ${lo}Â°</div></div>`;
+  }).join('');
+
+  el.innerHTML = top + `<div class="grid">${days}</div>`;
+}
+
+// ==== CALENDAR (main: hide $-tagged bill events) ====
+function renderCalendar(data) {
+  const el = document.getElementById('calendar-content');
+  if (!data || !Array.isArray(data.events)) {
+    el.innerHTML = '<p class="small">Calendar data unavailable.</p>';
+    return;
+  }
+
+  const items = data.events
+    .filter(ev => !isBillTitle(ev.title || ''))  // exclude bills
+    .slice(0, 10)
+    .map(ev => renderCalRow(ev))
+    .join('');
+
+  el.innerHTML = items || '<p class="small">No upcoming events.</p>';
+}
+
+// ==== BILLS (only $-tagged events) ====
+function renderBills(data) {
+  const el = document.getElementById('bills-content');
+  if (!data || !Array.isArray(data.events)) {
+    el.innerHTML = '<p class="small">Bills data unavailable.</p>';
+    return;
+  }
+
+  const items = data.events
+    .filter(ev => isBillTitle(ev.title || ''))   // only bills
+    .slice(0, 10)
+    .map(ev => renderCalRow(ev))
+    .join('');
+
+  el.innerHTML = items || '<p class="small">No upcoming bills.</p>';
+}
+
+// == Shared helpers ==
+function renderCalRow(ev) {
+  const dateStr = formatDateLong(ev);
+  const timeStr = formatTimeRange(ev);
+  const locStr  = (ev.location && ev.location.trim()) ? linkifyLocation(ev.location.trim()) : '';
+
+  return `
+    <div class="cal-row">
+      <div class="cal-title">${escapeHtml(ev.title || 'Untitled')}</div>
+      <div class="cal-date">${escapeHtml(dateStr)}</div>
+      <div class="cal-loc">${locStr}</div>
+      <div class="cal-time">${escapeHtml(timeStr)}</div>
+    </div>`;
+}
+
+function formatDateLong(ev) {
+  const d = new Date(ev.start);
+  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function isAllDayEvent(ev) {
+  const s = ev.start || '';
+  const e = ev.end || '';
+  const hasOffset = /(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+  if (s.includes('T00:00:00') && !hasOffset) return true;
+  if (e) {
+    const sd = new Date(s), ed = new Date(e);
+    const durH = (ed - sd) / 3600000;
+    if (sd.getHours() === 0 && sd.getMinutes() === 0 && durH >= 20) return true;
+  }
+  return false;
+}
+
+function formatTimeRange(ev) {
+  if (isAllDayEvent(ev)) return '';
+  const start = new Date(ev.start);
+  const end   = ev.end ? new Date(ev.end) : null;
+  const opts  = { hour: 'numeric', minute: '2-digit' };
+  const s = start.toLocaleTimeString([], opts);
+  if (!end) return s;
+  const e = end.toLocaleTimeString([], opts);
+  return (e === s) ? s : `${s} to ${e}`;
+}
+
+// Detect titles like "HOA ($430)" or "Mortgage ($1,795.50)"
+function isBillTitle(title) {
+  return /\(\$\d[\d,]*(?:\.\d{2})?\)/.test(title);
+}
+
+// Show only the domain for URLs; special-case any zoom.* â†’ "zoom.com"
+function linkifyLocation(loc) {
+  if (!/^https?:\/\//i.test(loc)) return escapeHtml(loc);
+  const href = loc.trim();
+  const domain = extractDomain(href);
+  const safeHref = escapeHtml(href);
+  const safeText = escapeHtml(domain);
+  return `<a href="${safeHref}" target="_blank" rel="noopener">${safeText}</a>`;
+}" target="_blank" rel="noopener">${safeText}</a>`;
+}
+
+function extractDomain(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    // naive eTLD+1
+    const parts = host.split('.');
+    let base = parts.length >= 2 ? parts.slice(-2).join('.') : host;
+    // normalize Zoom
+    if (host.endsWith(".zoom.us") || host === "zoom.us") base = "zoom.us";
+    if (host.endsWith(".zoom.com") || host === "zoom.com") base = "zoom.com";
+    return base;
+  } catch {
+    return url;
+  }
+}
+    // heuristic: last two labels
+    const parts = host.split('.');
+    return parts.length >= 2 ? parts.slice(-2).join('.') : host;
+  } catch {
+    return url;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+
+// Helpers used by renderCalendar
+function formatDateLong(ev) {
+  const d = new Date(ev.start);
+  return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+function isAllDayEvent(ev) {
+  const s = ev.start || '';
+  const e = ev.end || '';
+  // Heuristic: all-day entries tend to be midnight-to-midnight without a zone
+  const hasOffset = /(?:Z|[+-]\d{2}:\d{2})$/.test(s);
+  if (s.includes('T00:00:00') && !hasOffset) return true;
+  if (e) {
+    const sd = new Date(s), ed = new Date(e);
+    const durH = (ed - sd) / 3600000;
+    if (sd.getHours() === 0 && sd.getMinutes() === 0 && durH >= 20) return true;
+  }
+  return false;
+}
+function formatTimeRange(ev) {
+  if (isAllDayEvent(ev)) return '';
+  const start = new Date(ev.start);
+  const end   = ev.end ? new Date(ev.end) : null;
+  const opts  = { hour: 'numeric', minute: '2-digit' };
+  const s = start.toLocaleTimeString([], opts);
+  if (!end) return s;
+  const e = end.toLocaleTimeString([], opts);
+  return (e === s) ? s : `${s} to ${e}`;
+}
+function linkifyLocation(loc) {
+  if (!/^https?:\/\//i.test(loc)) return escapeHtml(loc);
+  const href = loc.trim();
+  const domain = extractDomain(href);
+  const safeHref = escapeHtml(href);
+  const safeText = escapeHtml(domain);
+  return `<a href="${safeHref}" target="_blank" rel="noopener">${safeText}</a>`;
+}" target="_blank" rel="noopener">${safe}</a>`;
+  }
+  return escapeHtml(loc);
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+
+function renderTides(data) {
+  const el = document.getElementById('tides-content');
+  if (!data || !Array.isArray(data.predictions)) {
+    el.innerHTML = '<p class="small">Tide data unavailable.</p>';
+    return;
+  }
+  const items = data.predictions.slice(0, 10).map(p => {
+    const t = new Date(p.t);
+    const hhmm = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const h = Number(p.v).toFixed(2);
+    const typ = p.type ? ` (${p.type})` : '';
+    return `<div class="card"><div><strong>${hhmm}</strong>${typ}</div><div class="small">${h} ft</div></div>`;
+  }).join('');
+  el.innerHTML = `<div class="grid">${items}</div>`;
+}
+
+
