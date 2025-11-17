@@ -32,7 +32,7 @@ C:\wamp64\www\dashboard
 
 .gitignore keeps secrets and generated data out of GitHub:
 
-* python/config.ini
+* config.ini
 * data/
 * python/_archive/
 * any credentials or token files
@@ -88,13 +88,15 @@ All data sources follow the same pattern:
 Slides rotate via assets/js/app.js.
 Each slide has its own JS module in assets/js/slides/.
 
+Always read config.ini using encoding='utf-8-sig' to avoid BOM errors.
+
 ---
 
 # Calendar Pipeline (ICS Only)
 
 We use ICS feeds exclusively. No OAuth, no Google Calendar API.
 
-Config file: python/config.ini
+Config file: data/config.ini
 Section: [calendars_ics]
 Each entry is label = ICS URL
 

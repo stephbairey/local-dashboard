@@ -9,11 +9,11 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-CFG = Path(__file__).resolve().parent / "config.ini"
+CFG = ROOT / "data" / "config.ini"
 
 def load_cfg():
     cp = configparser.ConfigParser()
-    cp.read(CFG)
+    cp.read(CFG, encoding="utf-8-sig")
     return cp
 
 def fetch_predictions(station, units="english", datum="MLLW"):

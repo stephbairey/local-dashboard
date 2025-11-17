@@ -9,7 +9,7 @@ import recurring_ical_events as rie
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-CONF = ROOT / "python" / "config.ini"
+CONF = ROOT / "data" / "config.ini"
 
 LOCAL_TZ = ZoneInfo("America/Los_Angeles")
 DAYS_AHEAD = 365
@@ -18,7 +18,7 @@ MAX_EVENTS = 120
 def load_config():
     # Raw parser to avoid % interpolation errors in Google ICS URLs
     cp = configparser.RawConfigParser()
-    cp.read(CONF, encoding="utf-8")
+    cp.read(CONF, encoding="utf-8-sig")
     calmap = {}
     if cp.has_section("calendars_ics"):
         for name, url in cp["calendars_ics"].items():
