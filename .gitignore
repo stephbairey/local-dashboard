@@ -4,3 +4,5 @@ python/_archive/
 python/credentials.json
 python/token.json
 .venv/
+python/config.ini
+data/config.ini
